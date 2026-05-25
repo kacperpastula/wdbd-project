@@ -1,12 +1,15 @@
 import os
 import setup
+import database
+from colorama import Fore, Back, Style, init
 #Menu główne
 #Wygląd
-def main_menu_front(mess = "=== Witamy w naszym programie! ==="):
+def main_menu_front(mess = "\n=== Witamy w naszym programie! ==="):
+    os.system('cls' if os.name == 'nt' else 'clear')
     print(mess)
     print("\n[1] Konfiguracja programu od 0")
     print("[2] Zmiana parametrów programu")
-    print("[3] Tworzenie struktury bazy danych")
+    print("[3] Obsługa struktury bazy danych")
     print("[4] Pobieranie danych")
     print("[5] Wyświetlenie danych")
     print("[help] Pomoc")
@@ -22,11 +25,14 @@ def main_menu():
             case "1":
                 first_setup()
             case "exit":
+                os.system('cls' if os.name == 'nt' else 'clear')
                 print("\nDziękujemy za skorzystanie z programu. Do widzenia!")
                 break
             case "2":
                 change_options()
-            case "3" | "4" | "5" |"6" |"7" |"8" |"9" | "help":
+            case "3":
+                db_tables_mng()
+            case "4" | "5" |"6" |"7" |"8" |"9" | "help":
                 print("\nPrzepraszam, to nie zostało jeszcze zaimplementowane :(")
             case _:
                 print("\nNiepoprawny wybór. Spróbuj ponownie.") 
@@ -49,7 +55,7 @@ def first_setup():
 #Menu zmiany parametrów
 #Wygląd
 def change_menu_front():
-    print("=== Menu zmiany parametrów ===")
+    print("\n=== Menu zmiany parametrów ===")
     print("\nParametry dotyczące bazy:")
     print("[1] Host")
     print("[2] Port")
@@ -60,7 +66,8 @@ def change_menu_front():
     print("\nParametry dotyczące API:")
     print("[7] Klucz do API")
     print("[8] Kraje")
-    print("[9] Sprawdzić połączenie z API")
+    print("[9] Częstotliwość pobierania danych")
+    print("[10] Sprawdzić połączenie z API")
     print("\nInne:")
     print("[help] Pomoc")
     print("[exit] Wyjście do głównego menu")
@@ -104,13 +111,69 @@ def change_options():
                 countries = ",".join([c.strip().upper() for c in countries_input.split(",") if c.strip()])
                 setup.update_env_variable("TARGET_COUNTRIES", openaq_key)
             case "9":
+                setup.get_fetch_interval()
+            case "10":
               setup.test_openaq_connection()  
             #Inne
             case "exit":
                 break
+            case "help":
+                print("\nPrzepraszam, to nie zostało jeszcze zaimplementowane :(")
             case _:
                 print("\nNiepoprawny wybór. Spróbuj ponownie.") 
 
-
-
+#Menu obsługi bazy danych
+#Wygląd
+def db_menu_front():
+    print("\n=== Menu tworzenia struktury bazy danych ===")
+    print("\n[1] Stworzyć tabeli")
+    print("[2] Usunąć tabeli (Usuwa tylko tabeli związane z tym programem)")
+    print("[help] Pomoc")
+    print("[exit] Wyjście do głównego menu")
     
+    
+    menu_output = input("\nWybierz opcję: ").strip().lower() or "help"
+    return menu_output
+#Praca
+def db_tables_mng():
+    while True:
+        mo = db_menu_front()
+        match mo:
+            case "1":
+                database.create_database_tables()
+            case "2":
+                database.drop_all_tables()
+            case "exit":
+                break
+            case "help":
+                print("\nPrzepraszam, to nie zostało jeszcze zaimplementowane :(")
+            case _:
+                print("\nNiepoprawny wybór. Spróbuj ponownie.") 
+
+#Menu pobierania danych
+#wygląd
+def data_menu_front():
+    print("\n=== Menu pobierania danych ===")
+    print("\n[1] Rospocznij pobieranie danych / Zatrzymaj pobieranie danych")
+    print("[2] Pobierz nowe dane teraz")
+    print("[3] Zaktualizować listę aktywnych sensorów")
+    print("[help] Pomoc")
+    print("[exit] Wyjście do głównego menu")
+    
+    menu_output = input("\nWybierz opcję: ").strip().lower() or "help"
+    return menu_output
+
+    # Czyści terminal przed pokazaniem menu (działa na Windows i Linux/Mac)
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    banner = f"""
+{Fore.GREEN}  ___   _               _VE  __  __                 _ _             
+{Fore.GREEN} / _ \ | |             / _ \|  \/  |               (_) |            
+{Fore.CYAN}| | | || |__    ___   / /_\ \ \  / | ___  _ __  _  _ _| |_ ___  _ __ 
+{Fore.CYAN}| | | || '_ \  / _ \  |  _  | |\/| |/ _ \| '_ \| | | | | __/ _ \| '__|
+{Fore.BLUE}| |_| || |_) ||  __/  | | | | |  | | (_) | | | | |_| | | || (_) | |   
+{Fore.BLUE} \___/ |_.__/  \___|  \_| |_/\_|  |_/\___/|_| |_|\__,_|_|\__\___/|_|   
+    """
+    print(banner)
+    print(Fore.YELLOW + "           System Monitorowania Jakości Powietrza v1.0")
+    print(Style.DIM + "        -------------------------------------------------")

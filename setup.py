@@ -18,11 +18,27 @@ def get_user_input():
     print("\n[2/3] Autoryzacja OpenAQ API")
     openaq_key = input("Podaj swój klucz API OpenAQ: ").strip()
     
-    # 3. Pobieranie kodów krajów
+    # 3. Pobieranie kodów krajów i częstotliwości pobierania danych
     print("\n[3/3] Filtrowanie danych")
     countries_input = input("Podaj kody krajów po przecinku (np. PL, DE, FR): ").strip()
     # Czyszczenie spacji i konwersja na wielkie litery
     countries = ",".join([c.strip().upper() for c in countries_input.split(",") if c.strip()])
+    print("Podaj, co ile czasu program ma sprawdzać i pobierać nowe dane.")
+    try:
+        hours_in = input("Godziny (np. 1, zostaw puste jeśli 0): ").strip()
+        hours = int(hours_in) if hours_in else 0
+        
+        minutes_in = input("Minuty (np. 30, zostaw puste jeśli 0): ").strip()
+        minutes = int(minutes_in) if minutes_in else 0
+        
+        total_minutes = (hours * 60) + minutes
+        
+        if total_minutes <= 0:
+            print("Czas musi być dłuższy niż 0 minut! Ustawiam domyślnie 15 minut.")
+            total_minutes = 15
+    except ValueError:
+        print("Błąd: Podano nieprawidłową liczbę. Spróbuj ponownie.")
+        return None
 
     return {
         "DB_HOST": db_host,
@@ -31,7 +47,8 @@ def get_user_input():
         "DB_USER": db_user,
         "DB_PASSWORD": db_password,
         "OPENAQ_API_KEY": openaq_key,
-        "TARGET_COUNTRIES": countries
+        "TARGET_COUNTRIES": countries,
+        "FETCH_INTERVAL_MINUTES": total_minutes
     }
 
 def test_postgres_connection(config=None):
@@ -74,12 +91,15 @@ def save_to_env(config):
         f"DB_USER={config['DB_USER']}",
         f"DB_PASSWORD={config['DB_PASSWORD']}",
         f"OPENAQ_API_KEY={config['OPENAQ_API_KEY']}",
-        f"TARGET_COUNTRIES={config['TARGET_COUNTRIES']}"
+        f"TARGET_COUNTRIES={config['TARGET_COUNTRIES']}",
+        f"FETCH_INTERVAL_MINUTES={config['FETCH_INTERVAL_MINUTES']}"
     ]
-    
-    with open(".env", "w", encoding="utf-8") as f:
-        f.write("\n".join(env_lines) + "\n")
-    print("Konfiguracja została zapisana do pliku .env")
+    try:
+        with open(".env", "w", encoding="utf-8") as f:
+            f.write("\n".join(env_lines) + "\n")
+        print("Konfiguracja została zapisana do pliku .env")
+    except TypeError:
+        print("Podano niepoprawny typ danych, konfiguracja nie została zapisana")
 
 def update_env_variable(key, new_value):
     env_file = ".env"
@@ -146,3 +166,26 @@ def test_openaq_connection(api_key=None):
     except requests.exceptions.RequestException as e:
         print(f"Wystąpił błąd podczas połączenia z API: {e}")
         return False
+
+def get_fetch_interval():
+    print("Podaj, jak często program ma sprawdzać i pobierać nowe dane.")
+    try:
+        hours_in = input("Godziny (np. 1, zostaw puste jeśli 0): ").strip()
+        hours = int(hours_in) if hours_in else 0
+        
+        minutes_in = input("Minuty (np. 30, zostaw puste jeśli 0): ").strip()
+        minutes = int(minutes_in) if minutes_in else 0
+        
+        total_minutes = (hours * 60) + minutes
+        
+        if total_minutes <= 0:
+            print("Czas musi być dłuższy niż 0 minut! Ustawiam domyślnie 15 minut.")
+            total_minutes = 15
+        
+        update_env_variable("FETCH_INTERVAL_MINUTES", str(total_minutes))
+        print(f"Częstotliwość ustawiona! Dane będą pobierane co {total_minutes} min ({hours}h {minutes}m).")
+        return total_minutes
+        
+    except ValueError:
+        print("Błąd: Podano nieprawidłową liczbę. Spróbuj ponownie.")
+        return None
