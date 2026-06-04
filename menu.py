@@ -140,7 +140,8 @@ def db_tables_mng():
         mo = db_menu_front()
         match mo:
             case "1":
-                database.create_database_tables()
+                if database.create_database_tables():
+                    database.create_views()
             case "2":
                 database.drop_all_tables()
             case "exit":
