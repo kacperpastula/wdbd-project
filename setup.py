@@ -23,7 +23,8 @@ def get_user_input():
     countries_input = input("Podaj kody krajów po przecinku (np. PL, DE, FR): ").strip()
     # Czyszczenie spacji i konwersja na wielkie litery
     countries = ",".join([c.strip().upper() for c in countries_input.split(",") if c.strip()])
-    print("Podaj, co ile czasu program ma sprawdzać i pobierać nowe dane.")
+    
+    print("\nPodaj, co ile czasu program ma sprawdzać i pobierać nowe dane.")
     try:
         hours_in = input("Godziny (np. 1, zostaw puste jeśli 0): ").strip()
         hours = int(hours_in) if hours_in else 0
@@ -37,8 +38,14 @@ def get_user_input():
             print("Czas musi być dłuższy niż 0 minut! Ustawiam domyślnie 15 minut.")
             total_minutes = 15
     except ValueError:
-        print("Błąd: Podano nieprawidłową liczbę. Spróbuj ponownie.")
+        print("Błąd: Podano nieprawidłową liczbę interwału. Konfiguracja przerwana.")
         return None
+
+    print("\nPodaj graniczną datę aktywności stacji w formacie ISO.")
+    print("Stacje, które nie wysłały danych po tej dacie, zostaną oznaczone jako nieaktywne.")
+    default_date = "2026-01-30T01:00:00Z"
+    last_update_input = input(f"Data aktywności (Enter dla domyślnej: {default_date}): ").strip()
+    last_update_activity = last_update_input if last_update_input else default_date
 
     return {
         "DB_HOST": db_host,
@@ -48,7 +55,8 @@ def get_user_input():
         "DB_PASSWORD": db_password,
         "OPENAQ_API_KEY": openaq_key,
         "TARGET_COUNTRIES": countries,
-        "FETCH_INTERVAL_MINUTES": total_minutes
+        "FETCH_INTERVAL_MINUTES": total_minutes,
+        "LAST_UPDATE_ACTIVITY": last_update_activity
     }
 
 def test_postgres_connection(config=None):
@@ -92,6 +100,7 @@ def save_to_env(config):
         f"DB_PASSWORD={config['DB_PASSWORD']}",
         f"OPENAQ_API_KEY={config['OPENAQ_API_KEY']}",
         f"TARGET_COUNTRIES={config['TARGET_COUNTRIES']}",
+        f"LAST_UPDATE_ACTIVITY={config['LAST_UPDATE_ACTIVITY']}",
         f"FETCH_INTERVAL_MINUTES={config['FETCH_INTERVAL_MINUTES']}"
     ]
     try:
