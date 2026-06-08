@@ -1,6 +1,7 @@
 import os
 import setup
 import database
+import upload
 from colorama import Fore, Back, Style, init
 #Menu główne
 #Wygląd
@@ -32,7 +33,9 @@ def main_menu():
                 change_options()
             case "3":
                 db_tables_mng()
-            case "4" | "5" |"6" |"7" |"8" |"9" | "help":
+            case "4":
+                data_menu()
+            case "5" |"6" |"7" |"8" |"9" | "help":
                 print("\nPrzepraszam, to nie zostało jeszcze zaimplementowane :(")
             case _:
                 print("\nNiepoprawny wybór. Spróbuj ponownie.") 
@@ -67,7 +70,8 @@ def change_menu_front():
     print("[7] Klucz do API")
     print("[8] Kraje")
     print("[9] Częstotliwość pobierania danych")
-    print("[10] Sprawdzić połączenie z API")
+    print("[10] Graniczna data aktywności stacji")
+    print("[11] Sprawdzić połączenie z API")
     print("\nInne:")
     print("[help] Pomoc")
     print("[exit] Wyjście do głównego menu")
@@ -109,10 +113,18 @@ def change_options():
             case "8":
                 countries_input = input("Podaj kody krajów po przecinku (np. PL, DE, FR): ").strip()
                 countries = ",".join([c.strip().upper() for c in countries_input.split(",") if c.strip()])
-                setup.update_env_variable("TARGET_COUNTRIES", openaq_key)
+                setup.update_env_variable("TARGET_COUNTRIES", countries)
             case "9":
                 setup.get_fetch_interval()
             case "10":
+                print("\nPodaj graniczną datę aktywności stacji w formacie ISO.")
+                print("Stacje, które nie wysłały danych po tej dacie, zostaną oznaczone jako nieaktywne.")
+                default_date = "2026-01-30T01:00:00Z"
+                last_update_input = input(f"Data aktywności (Enter dla domyślnej: {default_date}): ").strip()
+                last_update_activity = last_update_input if last_update_input else default_date
+                setup.update_env_variable("LAST_UPDATE_ACTIVITY", last_update_activity)
+
+            case "11":
               setup.test_openaq_connection()  
             #Inne
             case "exit":
@@ -156,7 +168,7 @@ def data_menu_front():
     print("\n=== Menu pobierania danych ===")
     print("\n[1] Rospocznij pobieranie danych / Zatrzymaj pobieranie danych")
     print("[2] Pobierz nowe dane teraz")
-    print("[3] Zaktualizować listę aktywnych sensorów")
+    print("[3] Zaktualizować listę stacji")
     print("[help] Pomoc")
     print("[exit] Wyjście do głównego menu")
     
@@ -177,3 +189,31 @@ def data_menu_front():
     print(banner)
     print(Fore.YELLOW + "           System Monitorowania Jakości Powietrza v1.0")
     print(Style.DIM + "        -------------------------------------------------")
+#Praca
+def data_menu():
+    while True:
+        mo = data_menu_front()
+        match mo:
+            case "1":
+                res = input("\nJeśli chcesz uruchomić pobieranie wpisz [1], jeąeli zatrzymać - [2]")
+                match res:
+                    case "1":
+                        upload.start_background_fetching()
+                    case "2":
+                        upload.stop_background_fetching()
+                        break
+                    case _:
+                        print("\nNiepoprawny wybór. Spróbuj ponownie.") 
+            case "2":
+                upload.fetch_latest_measurements_for_all_active_stations()
+            case "3":
+                lim = input("\nIle stacji chcesz pobrać z jednego kraju?: ").strip().lower()
+                print("To może potrwać, im więcej krajów, tym dłużej")
+                upload.get_X_stations(lim)
+            case "exit":
+                break
+            case "help":
+                print("\nPrzepraszam, to nie zostało jeszcze zaimplementowane :(")
+            case _:
+                print("\nNiepoprawny wybór. Spróbuj ponownie.") 
+    
