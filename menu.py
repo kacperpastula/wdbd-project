@@ -140,8 +140,8 @@ def change_options():
 #Wygląd
 def db_menu_front():
     print("\n=== Menu tworzenia struktury bazy danych ===")
-    print("\n[1] Stworzyć tabeli")
-    print("[2] Usunąć tabeli (Usuwa tylko tabeli związane z tym programem)")
+    print("\n[1] Stworzyć tabelę")
+    print("[2] Usunąć tabelę (Usuwa tylko tabelę związane z tym programem)")
     print("[help] Pomoc")
     print("[exit] Wyjście do głównego menu")
     
@@ -169,7 +169,7 @@ def db_tables_mng():
 #wygląd
 def data_menu_front():
     print("\n=== Menu pobierania danych ===")
-    print("\n[1] Rospocznij pobieranie danych / Zatrzymaj pobieranie danych")
+    print("\n[1] Rozpocznij pobieranie danych / Zatrzymaj pobieranie danych")
     print("[2] Pobierz nowe dane teraz")
     print("[3] Zaktualizować listę stacji")
     print("[help] Pomoc")

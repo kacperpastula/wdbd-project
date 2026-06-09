@@ -95,8 +95,9 @@ def drop_all_tables():
             with conn.cursor() as cursor:
                 for table in tables:
                     cursor.execute(f"DROP TABLE IF EXISTS {table} CASCADE;")
+                    cursor.execute(f"DROP VIEW IF EXISTS v_full_measurements, v_daily_trends, v_latest_measurements, v_country_sensor_avg, v_hourly_pollution_profile;")
             conn.commit()
-        print("Baza danych została całkowicie wyczyszczona (tabele usunięte).")
+        print("Baza danych została całkowicie wyczyszczona (tabele i widoki usunięte).")
         return True
         
     except Exception as e:
@@ -233,87 +234,99 @@ def create_views():
     
     views = [
             # Widok 1. Płaskie dane
+            # Ten widok łączy wszystkie tabele w jedną płaską strukturę.
             """--sql
             CREATE OR REPLACE VIEW v_full_measurements AS
             SELECT 
                 m.measurement_id,
                 m.time AS measurement_time,
                 m.value,
-                m.station_id,
                 s.sensor_name,
                 s.unit,
                 st.station_name,
                 st.latitude,
                 st.longitude,
+                st.is_active,
                 c.country_name
-            FROM measurement m
-            JOIN sensor s ON m.sensor_id = s.sensor_id
-            JOIN station st ON m.station_id = st.station_id
-            JOIN country c ON st.country_id = c.country_id;
+            FROM public.measurement m
+            JOIN public.sensor s ON m.sensor_id = s.sensor_id
+            JOIN public.station st ON m.station_id = st.station_id
+            JOIN public.country c ON st.country_id = c.country_id;
             """,
             # Widok 2. Agregacja trendów dziennych 
+            # Ten widok grupuje dane do poziomu dnia, wyciągając najważniejsze statystyki.
+            # Sprawdzi się do analizy historycznych trendów i wykresów liniowych.
             """--sql
             CREATE OR REPLACE VIEW v_daily_trends AS
             SELECT 
-                DATE_TRUNC('day', m.time) AS measurement_date,
-                c.country_name,
+                DATE(m.time) AS measurement_date,
                 st.station_name,
+                c.country_name,
                 s.sensor_name,
                 s.unit,
-                ROUND(CAST(AVG(m.value) AS NUMERIC), 2) AS avg_value,
+                COUNT(m.measurement_id) AS measurement_count,
                 MIN(m.value) AS min_value,
                 MAX(m.value) AS max_value,
-                COUNT(m.measurement_id) AS readings_count
-            FROM measurement m
-            JOIN sensor s ON m.sensor_id = s.sensor_id
-            JOIN station st ON m.station_id = st.station_id
-            JOIN country c ON st.country_id = c.country_id
-            GROUP BY DATE_TRUNC('day', m.time), c.country_name, st.station_name, s.sensor_name, s.unit;
+                AVG(m.value) AS avg_value
+            FROM public.measurement m
+            JOIN public.sensor s ON m.sensor_id = s.sensor_id
+            JOIN public.station st ON m.station_id = st.station_id
+            JOIN public.country c ON st.country_id = c.country_id
+            GROUP BY 
+                DATE(m.time),
+                st.station_name,
+                c.country_name,
+                s.sensor_name,
+                s.unit;
             """,
             # Widok 3. Najnowsze pomiary
+            # Jeden, najświeższy pomiar dla każdego czujnika na każdej ze stacji
             """--sql
             CREATE OR REPLACE VIEW v_latest_measurements AS
             WITH RankedMeasurements AS (
-            SELECT 
-                m.measurement_id,
-                m.station_id,
-                m.sensor_id,
-                m.value,
-                m.time,
-                ROW_NUMBER() OVER(PARTITION BY m.station_id, m.sensor_id ORDER BY m.time DESC) as rn
-            FROM measurement m
+                SELECT 
+                    station_id,
+                    sensor_id,
+                    value,
+                    time,
+                    ROW_NUMBER() OVER (PARTITION BY station_id, sensor_id ORDER BY time DESC) as rn
+                FROM public.measurement
             )
             SELECT 
-                rm.time AS latest_time,
-                c.country_name,
                 st.station_name,
-                st.latitude,
-                st.longitude,
                 s.sensor_name,
-                rm.value,
-                s.unit
+                rm.value AS latest_value,
+                s.unit,
+                rm.time AS last_measurement_time,
+                st.is_active
             FROM RankedMeasurements rm
-            JOIN sensor s ON rm.sensor_id = s.sensor_id
-            JOIN station st ON rm.station_id = st.station_id
-            JOIN country c ON st.country_id = c.country_id
+            JOIN public.station st ON rm.station_id = st.station_id
+            JOIN public.sensor s ON rm.sensor_id = s.sensor_id
             WHERE rm.rn = 1;
             """,
-            # Widok 4. Ranking zanieczyszczeń w każdym kraju
+            # Widok 4. Analiza zanieczyszczeń według kraju
+            # Pozwala na szybkie porównanie ogólnych uśrednionych wartości z konkretnych 
+            # typów czujników pomiędzy poszczególnymi państwami. Wyklucza stacje, które zostały oznaczone jako nieaktywne
             """--sql
-            CREATE OR REPLACE VIEW v_location_pollution_ranking AS
+            CREATE OR REPLACE VIEW v_country_sensor_avg AS
             SELECT 
                 c.country_name,
-                st.station_name,
                 s.sensor_name,
-                ROUND(CAST(AVG(m.value) AS NUMERIC), 2) AS overall_avg_value,
-                DENSE_RANK() OVER (PARTITION BY c.country_name, s.sensor_name ORDER BY AVG(m.value) DESC) AS pollution_rank
-            FROM measurement m
-            JOIN sensor s ON m.sensor_id = s.sensor_id
-            JOIN station st ON m.station_id = st.station_id
-            JOIN country c ON st.country_id = c.country_id
-            GROUP BY c.country_name, st.station_name, s.sensor_name;
+                s.unit,
+                COUNT(DISTINCT st.station_id) AS active_stations_count,
+                AVG(m.value) AS overall_avg_value
+            FROM public.measurement m
+            JOIN public.sensor s ON m.sensor_id = s.sensor_id
+            JOIN public.station st ON m.station_id = st.station_id
+            JOIN public.country c ON st.country_id = c.country_id
+            WHERE st.is_active = TRUE
+            GROUP BY 
+                c.country_name,
+                s.sensor_name,
+                s.unit;
             """,
             # Widok 5. Dobowy profil zanieczyszczeń
+            # Mówi jakie są średnie wartości z poszczególnych czujników w zależności od godziny, na każdej ze stacji
             """--sql
             CREATE OR REPLACE VIEW v_hourly_pollution_profile AS
             SELECT 
@@ -352,7 +365,7 @@ def create_views():
         print(" - v_full_measurements (Płaskie dane)")
         print(" - v_daily_trends (Dzienne trendy)")
         print(" - v_latest_measurements (Najnowsze pomiary)")
-        print(" - v_location_pollution_ranking (Ranking zanieczyszczeń)")
+        print(" - v_country_sensor_avg (Analiza zanieczyszczeń według kraju)")
         print(" - v_hourly_pollution_profile (Dobowy profil)")
         
         return True
