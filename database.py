@@ -15,14 +15,6 @@ def get_db_connection():
     )
 
 def create_database_tables():
-    print("\n[Baza Danych] Tworzenie struktury tabel...")
-    
-    load_dotenv(override=True)
-    
-    if not os.getenv("DB_NAME"):
-        print("Błąd: Brak konfiguracji bazy danych w pliku .env.")
-        return False
-
     sql_queries = [
         # 1. Tabela Country
         """
@@ -60,18 +52,43 @@ def create_database_tables():
             time TIMESTAMP NOT NULL,
             UNIQUE (sensor_id, time)
         );
+        """,
+        # 5. Tabela Słownikowa: status importu: 'STARTED', 'SUCCESS', 'PARTIAL_SUCCESS', 'FAILED'
+        """
+        CREATE TABLE IF NOT EXISTS import_status (
+            status_id INT PRIMARY KEY,
+            status_name VARCHAR(50) NOT NULL UNIQUE
+        );
+        """,
+        # 6. Tabela Techniczna: logi importu
+        """
+        CREATE TABLE IF NOT EXISTS import_log (
+            log_id SERIAL PRIMARY KEY,
+            status_id INT REFERENCES import_status(status_id) ON DELETE RESTRICT,
+            import_type VARCHAR(50) NOT NULL,
+            records_processed INT DEFAULT 0,
+            message TEXT,
+            started_at TIMESTAMP NOT NULL,
+            finished_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
         """
     ]
+    insert_statuses = """
+        INSERT INTO import_status (status_id, status_name) 
+        VALUES (1, 'STARTED'), (2, 'SUCCESS'), (3, 'PARTIAL_SUCCESS'), (4, 'FAILED')
+        ON CONFLICT (status_id) DO NOTHING;
+        """
 
     try:
         with get_db_connection() as connection:
             with connection.cursor() as cursor:
                 for query in sql_queries:
                     cursor.execute(query)
+                cursor.execute(insert_statuses)
         connection.commit()
         
         print("Struktura bazy danych została pomyślnie utworzona!")
-        print("Utworzone tabele: country, sensor, station, measurement")
+        print("Utworzone tabele: country, sensor, station, measurement, import_status, import_log")
         return True
 
     except Exception as e:
@@ -188,35 +205,46 @@ def get_active_station_ids():
     FROM station 
     WHERE is_active = true;
     """
-    active_sensor_ids = []
+    active_station_ids = []
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(query)
                 rows = cursor.fetchall()
-                active_sensor_ids = [row[0] for row in rows]
-        return active_sensor_ids
+                active_station_ids = [row[0] for row in rows]
+        return active_station_ids
     except Exception as e:
         print(f"Błąd podczas pobierania aktywnych stacji: {e}")
         return []
-
+    
+def add_import_log_start(import_type, started_at):
     query = """
-    SELECT sensor_id 
-    FROM sensor 
-    WHERE station_id IN (
-        SELECT station_id 
-        FROM station 
-        WHERE is_active = true
-    );
+    INSERT INTO import_log (status_id, import_type, started_at, finished_at)
+    VALUES (1, %s, %s, NULL) RETURNING log_id;
     """
-    active_sensor_ids = []
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(query)
-                rows = cursor.fetchall()
-                active_sensor_ids = [row[0] for row in rows]
-        return active_sensor_ids
+                cursor.execute(query, (import_type, started_at))
+                log_id = cursor.fetchone()[0]
+            conn.commit()
+            return log_id
     except Exception as e:
-        print(f"Błąd podczas pobierania sensorów aktywnych stacji: {e}")
-        return []
+        print(f"Nie można rozpocząć logu importu w bazie: {e}")
+        return None
+
+def update_import_log_finish(log_id, status_id, records_processed, message=None):
+    if log_id is None:
+        return
+    query = """
+    UPDATE import_log 
+    SET status_id = %s, records_processed = %s, message = %s, finished_at = CURRENT_TIMESTAMP
+    WHERE log_id = %s;
+    """
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(query, (status_id, records_processed, message, log_id))
+            conn.commit()
+    except Exception as e:
+        print(f"Nie można zaktualizować logu importu w bazie: {e}")
