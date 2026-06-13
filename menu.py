@@ -13,6 +13,7 @@ def main_menu_front(mess = "\n=== Witamy w naszym programie! ==="):
     print("[3] Obsługa struktury bazy danych")
     print("[4] Pobieranie danych")
     print("[5] Wyświetlenie danych")
+    print("[6] Uruchom Dashboard ") #Wizualizacja danych w Streamlit
     print("[help] Pomoc")
     print("[exit] Wyjście z programu")
     
@@ -37,11 +38,17 @@ def main_menu():
                 data_menu()
             case "5":
                 view_menu_front()
-            case "6" |"7" |"8" |"9" | "help":
+            case "6":
+                print("\nUruchamiam serwer wizualizacji...")
+                print("Uwaga: Aby wyłączyć dashboard i wrócić do tego menu, naciśnij [Ctrl + C] na klawiaturze.")
+                try:
+                    os.system("uv run streamlit run dashboard.py")
+                except KeyboardInterrupt:
+                    pass 
+            case "7" | "8" | "9" | "help":
                 print("\nPrzepraszam, to nie zostało jeszcze zaimplementowane :(")
             case _:
-                print("\nNiepoprawny wybór. Spróbuj ponownie.") 
-
+                print("\nNiepoprawny wybór. Spróbuj ponownie.")
 
 #Konfiguracja programu od 0
 def first_setup():
