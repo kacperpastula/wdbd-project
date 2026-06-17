@@ -35,7 +35,9 @@ def main_menu():
                 db_tables_mng()
             case "4":
                 data_menu()
-            case "5" |"6" |"7" |"8" |"9" | "help":
+            case "5":
+                view_menu_front()
+            case "6" |"7" |"8" |"9" | "help":
                 print("\nPrzepraszam, to nie zostało jeszcze zaimplementowane :(")
             case _:
                 print("\nNiepoprawny wybór. Spróbuj ponownie.") 
@@ -138,8 +140,8 @@ def change_options():
 #Wygląd
 def db_menu_front():
     print("\n=== Menu tworzenia struktury bazy danych ===")
-    print("\n[1] Stworzyć tabeli")
-    print("[2] Usunąć tabeli (Usuwa tylko tabeli związane z tym programem)")
+    print("\n[1] Stworzyć tabelę")
+    print("[2] Usunąć tabelę (Usuwa tylko tabelę związane z tym programem)")
     print("[help] Pomoc")
     print("[exit] Wyjście do głównego menu")
     
@@ -152,7 +154,8 @@ def db_tables_mng():
         mo = db_menu_front()
         match mo:
             case "1":
-                database.create_database_tables()
+                if database.create_database_tables():
+                    database.create_views()
             case "2":
                 database.drop_all_tables()
             case "exit":
@@ -166,7 +169,7 @@ def db_tables_mng():
 #wygląd
 def data_menu_front():
     print("\n=== Menu pobierania danych ===")
-    print("\n[1] Rospocznij pobieranie danych / Zatrzymaj pobieranie danych")
+    print("\n[1] Rozpocznij pobieranie danych / Zatrzymaj pobieranie danych")
     print("[2] Pobierz nowe dane teraz")
     print("[3] Zaktualizować listę stacji")
     print("[help] Pomoc")
@@ -195,7 +198,7 @@ def data_menu():
         mo = data_menu_front()
         match mo:
             case "1":
-                res = input("\nJeśli chcesz uruchomić pobieranie wpisz [1], jeąeli zatrzymać - [2]")
+                res = input("\nJeśli chcesz uruchomić pobieranie wpisz [1], jeżeli zatrzymać - [2]")
                 match res:
                     case "1":
                         upload.start_background_fetching()
@@ -215,5 +218,32 @@ def data_menu():
             case "help":
                 print("\nPrzepraszam, to nie zostało jeszcze zaimplementowane :(")
             case _:
-                print("\nNiepoprawny wybór. Spróbuj ponownie.") 
+                print("\nNiepoprawny wybór. Spróbuj ponownie.")
+                
+
+
+def view_menu_front():
+    """Główna pętla menu obsługująca wybór widoków."""
+    widoki = database.list_database_views()
     
+    if not widoki:
+        return
+        
+    while True:
+        wybor = input("\nWpisz numer widoku, który chcesz wyświetlić (lub 'q' aby wrócić/wyjść): ")
+        
+        if wybor.lower() == 'q':
+            print("Wyjście z menu widoków.")
+            break
+            
+        if wybor.isdigit():
+            numer = int(wybor)
+            
+            if 1 <= numer <= len(widoki):
+                indeks = numer - 1
+                wybrany_widok = widoki[indeks]
+                database.display_view_data(wybrany_widok)
+            else:
+                print(f"Błąd: Proszę wpisać numer od 1 do {len(widoki)}.")
+        else:
+            print("Błąd: Wpisana wartość nie jest numerem.")

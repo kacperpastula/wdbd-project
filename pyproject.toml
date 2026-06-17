@@ -7,7 +7,10 @@ requires-python = ">=3.12"
 dependencies = [
     "colorama>=0.4.6",
     "dotenv>=0.9.9",
+    "openaq>=0.7.0",
+    "pandas>=3.0.3",
     "psycopg2>=2.9.12",
     "requests>=2.34.2",
+    "tabulate>=0.10.0",
     "textual>=8.2.7",
 ]
