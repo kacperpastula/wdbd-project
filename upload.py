@@ -1,5 +1,7 @@
 import requests
+import time
 import os
+import re
 from datetime import datetime
 import database
 from dotenv import load_dotenv
@@ -10,15 +12,27 @@ bg_thread = None
 stop_event = threading.Event()
 
 def get_X_stations(limit=50):
+    start_time = datetime.now()
+    log_id = database.add_import_log_start('STATIONS_LIST', start_time)
+
     load_dotenv(override=True)
     url = "https://api.openaq.org/v3/locations"
     
     countries_env = os.getenv("TARGET_COUNTRIES")
     countries_list = [c.strip().upper() for c in countries_env.split(",") if c.strip()]
+    
+    if not countries_list:
+        database.update_import_log_finish(log_id, 4, 0, "Brak zdefiniowanych krajów w TARGET_COUNTRIES.")
+        return {"error": "No target countries configured"}
+    
     headers = {
         "X-API-Key": os.getenv("OPENAQ_API_KEY"),
         "Accept": "application/json"
     }
+
+    records_processed = 0
+    errors_occurred = False
+    
     for country_iso in countries_list:
         params = {
             "iso": country_iso,
@@ -32,6 +46,7 @@ def get_X_stations(limit=50):
             response = requests.get(url, headers=headers, params=params)
             response.raise_for_status()
             data = response.json()
+            
             for station in data["results"]:
                 station_id = station["id"]
                 station_name = station["name"]
@@ -49,17 +64,33 @@ def get_X_stations(limit=50):
                     if datetimeLast_utc_tekst:
                         dt_last = datetime.fromisoformat(datetimeLast_utc_tekst.replace('Z', '+00:00'))
                         is_active = dt_last > dt_wzorzec
+
                 database.add_to_tab_country(country_id, country_name)
                 database.add_to_tab_station(station_id, station_name, country_id, lat, lon, is_active)
+                records_processed += 1
+                
                 for sensor in station["sensors"]:
                     sensor_id = sensor["id"]
                     sensor_name = sensor["parameter"]["name"]
                     unit = sensor["parameter"]["units"]
                     database.add_to_tab_sensor(sensor_id, sensor_name, unit)
         except requests.exceptions.RequestException as e:
-            return {"error": str(e)}
+            errors_occurred = True
+            print(f"Błąd podczas pobierania stacji dla kraju {country_iso}: {e}")
+            continue
+
+    if errors_occurred and records_processed > 0:
+        database.update_import_log_finish(log_id, 3, records_processed, "Pobrano stacje częściowo z błędami.")
+    elif records_processed > 0:
+        database.update_import_log_finish(log_id, 2, records_processed, "Pomyślnie zaimportowano listę stacji.")
+    else:
+        database.update_import_log_finish(log_id, 4, 0, "Nie udało się zaimportować żadnej stacji pomiarowej.")
+
+    return {"status": "success", "processed": records_processed}
 
 def fetch_latest_measurements_for_all_active_stations():
+    start_time = datetime.now()
+    log_id = database.add_import_log_start('LATEST_MEASUREMENTS', start_time)
     
     load_dotenv(override=True)
     api_key = os.getenv("OPENAQ_API_KEY")
@@ -70,32 +101,69 @@ def fetch_latest_measurements_for_all_active_stations():
         print("Brak aktywnych stacji w bazie danych. Najpierw zaimportuj stacje.")
         return {"error": "No active stations found"}
     
-
     print("Inicjalizacja klienta OpenAQ...")
     client = OpenAQ(api_key=api_key)
 
+    records_processed = 0
+    errors_occurred = False
+
     for station_id in active_station_ids:
         print(f"Pobieranie pomiarów ze stacji {station_id}")
-        try:
-            latest_response = client.locations.latest(locations_id=station_id)
-            
-            if latest_response.results:
-                for item in latest_response.results:
-                    value = item.value
-                    time_text = item.datetime.utc
-                    sensor_id = item.sensors_id
-                    if value is None or sensor_id is None or not time_text:
-                        continue
-                    timestamp = datetime.fromisoformat(time_text.replace('Z', '+00:00'))
+        max_retries = 3
+        retry_count = 0
+        success = False
+
+        while retry_count < max_retries and not success:
+            try:
+                latest_response = client.locations.latest(locations_id=station_id)
+                
+                if latest_response.results:
+                    for item in latest_response.results:
+                        value = item.value
+                        time_text = item.datetime.utc
+                        sensor_id = item.sensors_id
+                        if value is None or sensor_id is None or not time_text:
+                            continue
+                        timestamp = datetime.fromisoformat(time_text.replace('Z', '+00:00'))   
+                        database.add_to_tab_measurement(station_id, sensor_id, value, timestamp)
+                        records_processed += 1
+                else:
+                    print(f"API nie zwróciło wyników dla stacji {station_id} (brak danych w systemie).")
+                
+                success = True
+
+            except Exception as e:
+                error_msg = f"{str(e)} {getattr(e, 'message', '')} {str(getattr(e, 'args', ''))}"
+                
+                if "rate limit" in error_msg.lower():
+                    retry_count += 1
                     
-                    database.add_to_tab_measurement(station_id, sensor_id, value, timestamp)
-            else:
-                print(f"API nie zwróciło wyników dla stacji {station_id} (brak danych w systemie).")
+                    match = re.search(r"resets in (\d+)", error_msg)
+                    
+                    if match:
+                        wait_seconds = int(match.group(1)) + 2
+                    else:
+                        wait_seconds = 15
+                    
+                    print(f" Wykryto limit API dla stacji {station_id}. Czekam {wait_seconds} s... (Próba {retry_count}/{max_retries})")
+                    time.sleep(wait_seconds)
+                    continue
+                
+                errors_occurred = True
+                print(f"Wystąpił nieoczekiwany błąd OpenAQ dla stacji {station_id}: {e}")
+                break
 
-        except Exception as e:
-            print(f"Wystąpił błąd podczas korzystania z biblioteki OpenAQ: {e}")
+        if not success:
+            errors_occurred = True
+    
+    if errors_occurred and records_processed > 0:
+        database.update_import_log_finish(log_id, 3, records_processed, "Pomiary pobrane częściowo z błędami.")
+    elif records_processed > 0:
+        database.update_import_log_finish(log_id, 2, records_processed, "Pomyślnie zapisano najnowsze pomiary smogu.")
+    else:
+        database.update_import_log_finish(log_id, 4, 0, "Wystąpił błąd. Nie zapisano żadnego nowego pomiaru z API.")
 
-    return {"status": "success"}
+    return {"status": "success", "processed": records_processed}
 
 def background_worker(stop_event):
     while True:
