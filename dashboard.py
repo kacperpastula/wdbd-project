@@ -46,9 +46,12 @@ st.markdown("Wizualizacja danych pomiarowych z systemu bazodanowego OpenAQ.")
 if df_full.empty or df_hourly.empty or df_country.empty:
     st.warning("Brak kompletnych danych w bazie danych. Upewnij się, że dane zostały pobrane (opcja [4] w main.py).")
 else:
-
+    # ==========================================
+    # 12 INTERAKTYWNYCH FILTRÓW
+    # ==========================================
     st.sidebar.header("Filtry danych")
     
+    # Przycisk do szybkiego odświeżania z bazy
     if st.sidebar.button("Odśwież dane z bazy"):
         st.cache_data.clear()
         st.rerun()
@@ -61,52 +64,66 @@ else:
     # 2. Kraj
     lista_krajow = sorted(df_full['country_name'].unique())
     wybrane_kraje = st.sidebar.multiselect("2. Wybierz kraje:", lista_krajow, default=lista_krajow)
-    df_filtered_by_country = df_full[df_full['country_name'].isin(wybrane_kraje)]
 
-    # 3. Stacja
-    lista_stacji = sorted(df_filtered_by_country['station_name'].unique())
-    wybrane_stacje = st.sidebar.multiselect("3. Wybierz stacje pomiarowe:", lista_stacji, default=lista_stacji[:5] if lista_stacji else [])
+    # NOWY FILTR: 3. Status stacji (Aktywne / Wszystkie)
+    tylko_aktywne = st.sidebar.checkbox("3. Pokaż tylko aktywne stacje", value=True)
 
-    # 4. Zakres dat pomiarów
+    # Wstępne filtrowanie na podstawie statusu i kraju
+    df_filtered_base = df_full[df_full['country_name'].isin(wybrane_kraje)]
+    if tylko_aktywne:
+        df_filtered_base = df_filtered_base[df_filtered_base['is_active'] == True]
+
+    # 4. Stacja (Lista stacji generuje się dynamicznie na podstawie wybranego statusu!)
+    lista_stacji = sorted(df_filtered_base['station_name'].unique())
+    wybrane_stacje = st.sidebar.multiselect("4. Wybierz stacje pomiarowe:", lista_stacji, default=lista_stacji[:5] if lista_stacji else [])
+
+    # 5. Zakres dat pomiarów
     min_date = df_full['measurement_time'].min().date()
     max_date = df_full['measurement_time'].max().date()
-    wybrane_daty = st.sidebar.date_input("4. Zakres dat pomiarów:", [min_date, max_date], min_value=min_date, max_value=max_date)
+    wybrane_daty = st.sidebar.date_input("5. Zakres dat pomiarów:", [min_date, max_date], min_value=min_date, max_value=max_date)
 
-    # 5. Zakres godzin (Dla Heatmapy)
-    wybrane_godziny = st.sidebar.slider("5. Zakres godzin (Wykres 3):", 0, 23, (0, 23))
+    # 6. Zakres godzin (Dla Heatmapy)
+    wybrane_godziny = st.sidebar.slider("6. Zakres godzin (Wykres 3):", 0, 23, (0, 23))
 
-    # Dynamiczne wyciąganie min i max dla suwaków
-    df_sensor_only = df_full[df_full['sensor_name'] == wybrany_czujnik]
-    min_possible = float(df_sensor_only['value'].min())
-    max_possible = float(df_sensor_only['value'].max())
+    # Dynamiczne wyciąganie min i max dla suwaków (zależnie od wybranego zanieczyszczenia i statusu)
+    df_sensor_only = df_filtered_base[df_filtered_base['sensor_name'] == wybrany_czujnik]
+    
+    # Zabezpieczenie przed błędem, gdy filtr odetnie wszystkie dane
+    if not df_sensor_only.empty:
+        min_possible = float(df_sensor_only['value'].min())
+        max_possible = float(df_sensor_only['value'].max())
+    else:
+        min_possible, max_possible = 0.0, 100.0
 
-    # 6. Min próg
-    min_prog = st.sidebar.slider("6. Minimalny próg stężenia:", min_possible, max_possible, min_possible)
+    # 7. Min próg
+    min_prog = st.sidebar.slider("7. Minimalny próg stężenia:", min_possible, max_possible, min_possible)
 
-    # 7. Max próg
-    max_prog = st.sidebar.slider("7. Maksymalny próg stężenia:", min_possible, max_possible, max_possible)
+    # 8. Max próg
+    max_prog = st.sidebar.slider("8. Maksymalny próg stężenia:", min_possible, max_possible, max_possible)
 
-    # 8. Rozdzielczość danych
-    rozdzielczosc = st.sidebar.radio("8. Rozdzielczość Wykresu 1:", ["Szczegółowa (godzinowa)", "Uśredniona (dzienna)"])
+    # 9. Rozdzielczość danych
+    rozdzielczosc = st.sidebar.radio("9. Rozdzielczość Wykresu 1:", ["Szczegółowa (godzinowa)", "Uśredniona (dzienna)"])
 
-    # 9. Tryb rysowania wykresu
-    tryb_rysowania = st.sidebar.selectbox("9. Wygląd trendu (Wykres 1):", ["Linie i punkty", "Tylko linie", "Tylko punkty (Scatter)"])
+    # 10. Tryb rysowania wykresu
+    tryb_rysowania = st.sidebar.selectbox("10. Wygląd trendu (Wykres 1):", ["Linie i punkty", "Tylko linie", "Tylko punkty (Scatter)"])
 
-    # 10. Typ skali 
-    typ_skali = st.sidebar.selectbox("10. Typ skali osi Y (Wykres 1):", ["Liniowa", "Logarytmiczna"])
+    # 11. Typ skali 
+    typ_skali = st.sidebar.selectbox("11. Typ skali osi Y (Wykres 1):", ["Liniowa", "Logarytmiczna"])
     log_y = True if typ_skali == "Logarytmiczna" else False
     
-    # 11. NOWOŚĆ: Grupowanie osi Y
-    grupowanie_linii = st.sidebar.radio("11. Grupuj linie (Wykres 1) według:", ["Stacji", "Krajów (Średnia)"])
+    # 12. Grupowanie osi Y
+    grupowanie_linii = st.sidebar.radio("12. Grupuj linie (Wykres 1) według:", ["Stacji", "Krajów (Średnia)"])
 
 
+    # ==========================================
+    # LOGIKA FILTROWANIA
+    # ==========================================
     # Filtrowanie głównych danych dla Wykresu 1
-    df_w1 = df_full[
-        (df_full['sensor_name'] == wybrany_czujnik) &
-        (df_full['country_name'].isin(wybrane_kraje)) &
-        (df_full['station_name'].isin(wybrane_stacje)) &
-        (df_full['value'] >= min_prog) &
-        (df_full['value'] <= max_prog)
+    df_w1 = df_filtered_base[
+        (df_filtered_base['sensor_name'] == wybrany_czujnik) &
+        (df_filtered_base['station_name'].isin(wybrane_stacje)) &
+        (df_filtered_base['value'] >= min_prog) &
+        (df_filtered_base['value'] <= max_prog)
     ].copy() 
 
     if isinstance(wybrane_daty, (list, tuple)) and len(wybrane_daty) == 2:
@@ -120,21 +137,20 @@ else:
         if rozdzielczosc == "Uśredniona (dzienna)":
             df_w1['time_col'] = df_w1['measurement_time'].dt.date
         else:
-            # Zaokrąglamy czas do pełnych godzin, żeby ładnie narysować profil dobowy
             df_w1['time_col'] = df_w1['measurement_time'].dt.floor('h')
 
-        # Decydujemy, co ma być osobną linią na wykresie
         group_col = 'station_name' if grupowanie_linii == "Stacji" else 'country_name'
 
-        # Zwijamy dane i wyciągamy średnią
         df_w1 = df_w1.groupby(['time_col', group_col])['value'].mean().reset_index()
         df_w1.rename(columns={'time_col': 'measurement_time'}, inplace=True)
 
     # Filtrowanie danych dla Wykresu 2 (Heatmapa)
+    # Przekazujemy prawidłowe stacje z df_filtered_base po odfiltrowaniu statusu
+    dopuszczalne_stacje = df_filtered_base['station_name'].unique()
     df_hourly_filtered = df_hourly[
         (df_hourly['sensor_name'] == wybrany_czujnik) &
-        (df_hourly['country_name'].isin(wybrane_kraje)) &
         (df_hourly['station_name'].isin(wybrane_stacje)) &
+        (df_hourly['station_name'].isin(dopuszczalne_stacje)) &
         (df_hourly['hour_of_day'] >= wybrane_godziny[0]) &
         (df_hourly['hour_of_day'] <= wybrane_godziny[1])
     ]
@@ -157,7 +173,7 @@ else:
                 df_w1,
                 x="measurement_time",
                 y="value",
-                color=group_col,  # Dynamiczny kolor zależnie od wybranego grupowania
+                color=group_col, 
                 title=f"Trend {wybrany_czujnik.upper()} ({rozdzielczosc}) - wg {grupowanie_linii}",
                 labels={"measurement_time": "Czas pomiaru", "value": f"Stężenie ({jednostka})", group_col: grupowanie_linii},
                 log_y=log_y,
