@@ -1,8 +1,10 @@
 import os
+import sys
 import setup
 import database
 import upload
 from colorama import Fore, Back, Style, init
+import subprocess
 #Menu główne
 #Wygląd
 def main_menu_front(mess = "\n=== Witamy w naszym programie! ==="):
@@ -45,7 +47,10 @@ def main_menu():
                     os.system("uv run streamlit run dashboard.py")
                 except KeyboardInterrupt:
                     pass 
-            case "7" | "8" | "9" | "help":
+            case "help":
+                print("\nOtwieram dokumentację...")
+                open_documentation("help.md")
+            case "7" | "8" | "9":
                 print("\nPrzepraszam, to nie zostało jeszcze zaimplementowane :(")
             case _:
                 print("\nNiepoprawny wybór. Spróbuj ponownie.")
@@ -254,3 +259,21 @@ def view_menu_front():
                 print(f"Błąd: Proszę wpisać numer od 1 do {len(widoki)}.")
         else:
             print("Błąd: Wpisana wartość nie jest numerem.")
+
+def open_documentation(filepath="help.md"):
+    
+    if not os.path.exists(filepath):
+        print(f"\nBłąd: Nie znaleziono pliku '{filepath}'.")
+        return
+
+    try:
+        if sys.platform == "win32":
+            os.startfile(filepath)  # Windows
+        elif sys.platform == "darwin":
+            subprocess.call(["open", filepath])  # macOS
+        else:
+            subprocess.call(["xdg-open", filepath])  # Linux
+            
+        print(f"\nPlik '{filepath}' został otwarty w domyślnej aplikacji.")
+    except Exception as e:
+        print(f"\nNie udało się otworzyć pliku: {e}")
